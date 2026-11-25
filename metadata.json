@@ -1,0 +1,6 @@
+{
+  "name": "9HR India Onboarding Portal",
+  "description": "End-to-end Employee Onboarding Management System for 9HR India Pvt. Ltd. featuring role-based HR dashboards, secure candidate onboarding links, document verification, 2FA, and employee record creation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

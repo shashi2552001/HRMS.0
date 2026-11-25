@@ -1,0 +1,291 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isVerified() && request.auth.uid == uid;
+    }
+
+    function isBootstrappedSuperAdmin() {
+      return isVerified() && request.auth.token.email == 'itsdemoid00@gmail.com';
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        isBootstrappedSuperAdmin() ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidStaffUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'fullName', 'role', 'isActive', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'fullName', 'role', 'department', 'isActive', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.role in ['SUPER_ADMIN', 'ADMIN', 'HR']
+        && (!('department' in data) || (data.department is string && data.department.size() <= 80))
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminGrant(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'grantedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'role', 'grantedBy', 'createdAt'])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.role in ['SUPER_ADMIN', 'ADMIN']
+        && data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidCandidateSummary(data) {
+      return data.keys().hasAll([
+          'candidateCode', 'fullName', 'email', 'mobile', 'position',
+          'department', 'joiningDate', 'status', 'completionPct',
+          'ownerId', 'isDemo', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'candidateCode', 'fullName', 'email', 'mobile', 'position',
+          'department', 'joiningDate', 'status', 'completionPct',
+          'ownerId', 'isDemo', 'createdAt', 'updatedAt'
+        ])
+        && data.candidateCode is string && data.candidateCode.size() >= 3 && data.candidateCode.size() <= 40 && data.candidateCode.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.mobile is string && data.mobile.size() >= 8 && data.mobile.size() <= 20
+        && data.position is string && data.position.size() >= 2 && data.position.size() <= 120
+        && data.department is string && data.department.size() >= 2 && data.department.size() <= 80
+        && data.joiningDate is string && data.joiningDate.size() >= 4 && data.joiningDate.size() <= 30
+        && data.status in [
+          'Draft', 'Link Sent', 'In Progress', 'Submitted', 'Under Review',
+          'Documents Pending', 'Correction Required', 'Approved',
+          'Onboarding Completed', 'Rejected'
+        ]
+        && data.completionPct is number && data.completionPct >= 0 && data.completionPct <= 100
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.isDemo is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEmployeeRecord(data) {
+      return data.keys().hasAll([
+          'employeeCode', 'candidateId', 'fullName', 'email',
+          'department', 'position', 'joiningDate', 'ownerId',
+          'isDemo', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'employeeCode', 'candidateId', 'fullName', 'email',
+          'department', 'position', 'joiningDate', 'ownerId',
+          'isDemo', 'createdAt', 'updatedAt'
+        ])
+        && data.employeeCode is string && data.employeeCode.size() >= 5 && data.employeeCode.size() <= 40 && data.employeeCode.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.candidateId is string && data.candidateId.size() >= 1 && data.candidateId.size() <= 128 && data.candidateId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.department is string && data.department.size() >= 2 && data.department.size() <= 80
+        && data.position is string && data.position.size() >= 2 && data.position.size() <= 120
+        && data.joiningDate is string && data.joiningDate.size() >= 4 && data.joiningDate.size() <= 30
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.isDemo is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLogEntry(data) {
+      return data.keys().hasAll(['actorUid', 'actorEmail', 'action', 'targetType', 'targetId', 'details', 'createdAt'])
+        && data.keys().hasOnly(['actorUid', 'actorEmail', 'action', 'targetType', 'targetId', 'details', 'createdAt'])
+        && data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128 && data.actorUid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.actorEmail is string && data.actorEmail.size() >= 3 && data.actorEmail.size() <= 200
+        && data.action is string && data.action.size() >= 2 && data.action.size() <= 80
+        && data.targetType is string && data.targetType.size() >= 2 && data.targetType.size() <= 60
+        && data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128
+        && data.details is string && data.details.size() <= 1000
+        && data.createdAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    // 1. Staff Users (PII isolated to owner or admin)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedSuperAdmin();
+
+      allow create: if isValidId(userId)
+        && isVerified()
+        && isValidStaffUser(incoming())
+        && incoming().uid == userId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (isOwner(userId) && incoming().role == 'HR' && incoming().isActive == true)
+        );
+
+      allow update: if isValidId(userId)
+        && isVerified()
+        && isValidStaffUser(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'role', 'department', 'isActive', 'updatedAt'])) ||
+          (isOwner(userId) && incoming().role == existing().role && incoming().isActive == existing().isActive && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'department', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // 2. Trusted Admin Grants
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedSuperAdmin();
+
+      allow create: if isValidId(userId)
+        && isBootstrappedSuperAdmin()
+        && isValidAdminGrant(incoming())
+        && incoming().uid == userId
+        && incoming().grantedBy == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isBootstrappedSuperAdmin()
+        && isValidAdminGrant(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'email']);
+
+      allow delete: if isValidId(userId) && isBootstrappedSuperAdmin();
+    }
+
+    // 3. Candidate Summaries (Scoped to owner or bootstrapped super admin)
+    match /candidates/{candidateId} {
+      allow get: if isValidId(candidateId) && (
+        (isVerified() && existing().ownerId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if isVerified() && (
+        resource.data.ownerId == request.auth.uid ||
+        isBootstrappedSuperAdmin()
+      );
+
+      allow create: if isValidId(candidateId)
+        && isVerified()
+        && isValidCandidateSummary(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(candidateId)
+        && isVerified()
+        && isValidCandidateSummary(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            existing().status != 'Onboarding Completed' &&
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'completionPct', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'email', 'mobile', 'position', 'department', 'joiningDate', 'updatedAt'])
+            )
+          )
+        );
+
+      allow delete: if isValidId(candidateId) && isAdmin();
+    }
+
+    // 4. Employee Records (Requires valid existing candidate)
+    match /employees/{employeeId} {
+      allow get: if isValidId(employeeId) && (
+        (isVerified() && existing().ownerId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if isVerified() && (
+        resource.data.ownerId == request.auth.uid ||
+        isBootstrappedSuperAdmin()
+      );
+
+      allow create: if isValidId(employeeId)
+        && isVerified()
+        && isValidEmployeeRecord(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/candidates/$(incoming().candidateId));
+
+      allow update: if isValidId(employeeId)
+        && isVerified()
+        && isValidEmployeeRecord(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().candidateId == existing().candidateId
+        && incoming().employeeCode == existing().employeeCode
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().ownerId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['department', 'position', 'joiningDate', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(employeeId) && isAdmin();
+    }
+
+    // 5. Audit Logs (Append-only)
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId) && (
+        (isVerified() && existing().actorUid == request.auth.uid) ||
+        isAdmin()
+      );
+      allow list: if isVerified() && (
+        resource.data.actorUid == request.auth.uid ||
+        isBootstrappedSuperAdmin()
+      );
+
+      allow create: if isValidId(logId)
+        && isVerified()
+        && isValidAuditLogEntry(incoming())
+        && incoming().actorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+  }
+}
